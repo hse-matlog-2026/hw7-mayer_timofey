@@ -220,7 +220,7 @@ class Formula:
         elif is_unary(self.root):
             sub = self.first
             sub_str = str(sub)
-            if is_binary(sub.root) or is_unary(sub.root) or is_quantifier(sub.root):
+            if is_binary(sub.root):
                 sub_str = f"({sub_str})"
             s = f"~{sub_str}"
         elif is_binary(self.root):
