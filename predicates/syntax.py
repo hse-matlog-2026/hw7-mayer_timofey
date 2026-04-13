@@ -435,21 +435,6 @@ class Formula:
         else:
             raise ValueError("Invalid formula")
 
-    def _without_parentheses(self):
-        """Returns a copy of this formula with _parenthesized set to False."""
-        if not self._parenthesized:
-            return self
-        if is_equality(self.root) or is_relation(self.root):
-            return Formula(self.root, self.arguments, _parenthesized=False)
-        elif is_unary(self.root):
-            return Formula(self.root, self.first, _parenthesized=False)
-        elif is_binary(self.root):
-            return Formula(self.root, self.first, self.second, _parenthesized=False)
-        elif is_quantifier(self.root):
-            return Formula(self.root, self.variable, self.statement, _parenthesized=False)
-        else:
-            raise ValueError("Invalid formula")
-
     @memoized_parameterless_method
     def __repr__(self) -> str:
         """Computes the string representation of the current formula.
@@ -649,8 +634,7 @@ class Formula:
         formula, rest = Formula._parse_prefix(string)
         if rest != '':
             raise ValueError("Extra characters")
-        # Remove outer parentheses for the canonical representation
-        return formula._without_parentheses()
+        return formula
 
     def constants(self) -> Set[str]:
         """Finds all constant names in the current formula.
