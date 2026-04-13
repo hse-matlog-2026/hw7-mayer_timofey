@@ -108,12 +108,10 @@ class Term:
 
     @memoized_parameterless_method
     def __repr__(self) -> str:
-        """Computes the string representation of the current term.
-
-        Returns:
-            The standard string representation of the current term.
-        """
-        # Task 7.1
+        if is_constant(self.root) or is_variable(self.root):
+            return self.root
+        else:
+            return self.root + '(' + ','.join(repr(arg) for arg in self.arguments) + ')'
 
     def __eq__(self, other: object) -> bool:
         """Compares the current term with the given one.
@@ -144,93 +142,64 @@ class Term:
 
     @staticmethod
     def _parse_prefix(string: str) -> Tuple[Term, str]:
-        """Parses a prefix of the given string into a term.
-
-        Parameters:
-            string: string to parse, which has a prefix that is a valid
-                representation of a term.
-
-        Returns:
-            A pair of the parsed term and the unparsed suffix of the string. If
-            the given string has as a prefix a constant name (e.g., ``'c12'``)
-            or a variable name (e.g., ``'x12'``), then the parsed prefix will be
-            that entire name (and not just a part of it, such as ``'x1'``).
-        """
-        # Task 7.3a
+        i = 0
+        while i < len(string) and string[i].isalnum():
+            i += 1
+        name = string[:i]
+        if i < len(string) and string[i] == '(':
+            i += 1
+            args = []
+            rest = string[i:]
+            while True:
+                arg, rest = Term._parse_prefix(rest)
+                args.append(arg)
+                if not rest or rest[0] != ',':
+                    break
+                rest = rest[1:]
+            if not rest or rest[0] != ')':
+                raise ValueError("Missing closing parenthesis")
+            rest = rest[1:]
+            return Term(name, args), rest
+        else:
+            return Term(name), string[i:]
 
     @staticmethod
     def parse(string: str) -> Term:
-        """Parses the given valid string representation into a term.
-
-        Parameters:
-            string: string to parse.
-
-        Returns:
-            A term whose standard string representation is the given string.
-        """
-        # Task 7.3b
+        term, rest = Term._parse_prefix(string)
+        if rest != '':
+            raise ValueError("Extra characters")
+        return term
 
     def constants(self) -> Set[str]:
-        """Finds all constant names in the current term.
-
-        Returns:
-            A set of all constant names used in the current term.
-        """
-        # Task 7.5a
+        if is_constant(self.root):
+            return {self.root}
+        if is_variable(self.root):
+            return set()
+        result = set()
+        for arg in self.arguments:
+            result.update(arg.constants())
+        return result
 
     def variables(self) -> Set[str]:
-        """Finds all variable names in the current term.
-
-        Returns:
-            A set of all variable names used in the current term.
-        """
-        # Task 7.5b
+        if is_variable(self.root):
+            return {self.root}
+        if is_constant(self.root):
+            return set()
+        result = set()
+        for arg in self.arguments:
+            result.update(arg.variables())
+        return result
 
     def functions(self) -> Set[Tuple[str, int]]:
-        """Finds all function names in the current term, along with their
-        arities.
-
-        Returns:
-            A set of pairs of function name and arity (number of arguments) for
-            all function names used in the current term.
-        """
-        # Task 7.5c
+        result = set()
+        if is_function(self.root):
+            result.add((self.root, len(self.arguments)))
+        for arg in self.arguments:
+            result.update(arg.functions())
+        return result
 
     def substitute(self, substitution_map: Mapping[str, Term],
                    forbidden_variables: AbstractSet[str] = frozenset()) -> Term:
-        """Substitutes in the current term, each constant name `construct` or
-        variable name `construct` that is a key in `substitution_map` with the
-        term `substitution_map`\\ ``[``\\ `construct`\\ ``]``.
-
-        Parameters:
-            substitution_map: mapping defining the substitutions to be
-                performed.
-            forbidden_variables: variable names not allowed in substitution
-                terms.
-
-        Returns:
-            The term resulting from performing all substitutions. Only
-            constant name and variable name occurrences originating in the
-            current term are substituted (i.e., those originating in one of the
-            specified substitutions are not subjected to additional
-            substitutions).
-
-        Raises:
-            ForbiddenVariableError: If a term that is used in the requested
-                substitution contains a variable name from
-                `forbidden_variables`.
-
-        Examples:
-            >>> Term.parse('f(x,c)').substitute(
-            ...     {'c': Term.parse('plus(d,x)'), 'x': Term.parse('c')}, {'y'})
-            f(c,plus(d,x))
-
-            >>> Term.parse('f(x,c)').substitute(
-            ...     {'c': Term.parse('plus(d,y)')}, {'y'})
-            Traceback (most recent call last):
-              ...
-            predicates.syntax.ForbiddenVariableError: y
-        """
         for construct in substitution_map:
             assert is_constant(construct) or is_variable(construct)
         for variable in forbidden_variables:
@@ -375,12 +344,35 @@ class Formula:
 
     @memoized_parameterless_method
     def __repr__(self) -> str:
-        """Computes the string representation of the current formula.
+        def priority(r):
+            if r in ('A','E','~'):
+                return 3
+            if r == '&':
+                return 2
+            if r == '|':
+                return 1
+            if r == '->':
+                return 0
+            return 4
 
-        Returns:
-            The standard string representation of the current formula.
-        """
-        # Task 7.2
+        if is_equality(self.root):
+            return f"{self.arguments[0]}={self.arguments[1]}"
+        if is_relation(self.root):
+            return f"{self.root}({','.join(str(arg) for arg in self.arguments)})"
+        if is_unary(self.root):
+            sub = self.first
+            if priority(sub.root) < priority(self.root):
+                return f"~({sub})"
+            else:
+                return f"~{sub}"
+        if is_binary(self.root):
+            left, right = self.first, self.second
+            left_str = str(left) if priority(left.root) >= priority(self.root) else f"({left})"
+            right_str = str(right) if priority(right.root) > priority(self.root) else f"({right})"
+            return f"{left_str}{self.root}{right_str}"
+        if is_quantifier(self.root):
+            return f"{self.root}{self.variable}[{self.statement}]"
+        raise ValueError("Invalid formula")
 
     def __eq__(self, other: object) -> bool:
         """Compares the current formula with the given one.
@@ -411,122 +403,187 @@ class Formula:
 
     @staticmethod
     def _parse_prefix(string: str) -> Tuple[Formula, str]:
-        """Parses a prefix of the given string into a formula.
+        def parse_identifier(s):
+            i = 0
+            while i < len(s) and s[i].isalnum():
+                i += 1
+            return s[:i], s[i:]
 
-        Parameters:
-            string: string to parse, which has a prefix that is a valid
-                representation of a formula.
+        def parse_term(s):
+            return Term._parse_prefix(s)
 
-        Returns:
-            A pair of the parsed formula and the unparsed suffix of the string.
-            If the given string has as a prefix a term followed by an equality
-            followed by a constant name (e.g., ``'f(y)=c12'``) or by a variable
-            name (e.g., ``'f(y)=x12'``), then the parsed prefix will include
-            that entire name (and not just a part of it, such as ``'f(y)=x1'``).
-        """
-        # Task 7.4a
+        def parse_arguments(s):
+            terms = []
+            term, rest = parse_term(s)
+            terms.append(term)
+            while rest and rest[0] == ',':
+                rest = rest[1:]
+                term, rest = parse_term(rest)
+                terms.append(term)
+            return terms, rest
+
+        def parse_atomic(s):
+            if s and s[0] == '(':
+                formula, rest = parse_implication(s[1:])
+                if not rest or rest[0] != ')':
+                    raise ValueError("Missing closing parenthesis")
+                return formula, rest[1:]
+            if s and s[0] >= 'F' and s[0] <= 'T':
+                name, rest = parse_identifier(s)
+                if rest and rest[0] == '(':
+                    rest = rest[1:]
+                    args, rest = parse_arguments(rest)
+                    if not rest or rest[0] != ')':
+                        raise ValueError("Missing closing parenthesis")
+                    rest = rest[1:]
+                    return Formula(name, args), rest
+                else:
+                    raise ValueError("Expected relation with arguments")
+            term1, rest = parse_term(s)
+            if rest and rest[0] == '=':
+                rest = rest[1:]
+                term2, rest = parse_term(rest)
+                return Formula('=', (term1, term2)), rest
+            raise ValueError("Expected atomic formula")
+
+        def parse_quantifier_or_atomic(s):
+            if s and (s[0] == 'A' or s[0] == 'E'):
+                quant = s[0]
+                rest = s[1:]
+                var, rest = parse_identifier(rest)
+                if not is_variable(var):
+                    raise ValueError("Expected variable after quantifier")
+                if not rest or rest[0] != '[':
+                    raise ValueError("Expected '[' after quantifier")
+                rest = rest[1:]
+                statement, rest = parse_implication(rest)
+                if not rest or rest[0] != ']':
+                    raise ValueError("Expected ']' after statement")
+                rest = rest[1:]
+                return Formula(quant, var, statement), rest
+            else:
+                return parse_atomic(s)
+
+        def parse_unary(s):
+            if s and s[0] == '~':
+                sub, rest = parse_unary(s[1:])
+                return Formula('~', sub), rest
+            else:
+                return parse_quantifier_or_atomic(s)
+
+        def parse_conjunction(s):
+            left, rest = parse_unary(s)
+            while rest and rest[0] == '&':
+                rest = rest[1:]
+                right, rest = parse_unary(rest)
+                left = Formula('&', left, right)
+            return left, rest
+
+        def parse_disjunction(s):
+            left, rest = parse_conjunction(s)
+            while rest and rest[0] == '|':
+                rest = rest[1:]
+                right, rest = parse_conjunction(rest)
+                left = Formula('|', left, right)
+            return left, rest
+
+        def parse_implication(s):
+            left, rest = parse_disjunction(s)
+            while rest and rest.startswith('->'):
+                rest = rest[2:]
+                right, rest = parse_disjunction(rest)
+                left = Formula('->', left, right)
+            return left, rest
+
+        formula, rest = parse_implication(string)
+        return formula, rest
 
     @staticmethod
     def parse(string: str) -> Formula:
-        """Parses the given valid string representation into a formula.
-
-        Parameters:
-            string: string to parse.
-
-        Returns:
-            A formula whose standard string representation is the given string.
-        """
-        # Task 7.4b
+        formula, rest = Formula._parse_prefix(string)
+        if rest != '':
+            raise ValueError("Extra characters")
+        return formula
 
     def constants(self) -> Set[str]:
-        """Finds all constant names in the current formula.
-
-        Returns:
-            A set of all constant names used in the current formula.
-        """
-        # Task 7.6a
+        if is_equality(self.root) or is_relation(self.root):
+            result = set()
+            for arg in self.arguments:
+                result.update(arg.constants())
+            return result
+        if is_unary(self.root):
+            return self.first.constants()
+        if is_binary(self.root):
+            return self.first.constants().union(self.second.constants())
+        if is_quantifier(self.root):
+            return self.statement.constants()
+        raise ValueError("Invalid formula")
 
     def variables(self) -> Set[str]:
-        """Finds all variable names in the current formula.
-
-        Returns:
-            A set of all variable names used in the current formula.
-        """
-        # Task 7.6b
+        if is_equality(self.root) or is_relation(self.root):
+            result = set()
+            for arg in self.arguments:
+                result.update(arg.variables())
+            return result
+        if is_unary(self.root):
+            return self.first.variables()
+        if is_binary(self.root):
+            return self.first.variables().union(self.second.variables())
+        if is_quantifier(self.root):
+            result = self.statement.variables()
+            result.add(self.variable)
+            return result
+        raise ValueError("Invalid formula")
 
     def free_variables(self) -> Set[str]:
-        """Finds all variable names that are free in the current formula.
-
-        Returns:
-            A set of every variable name that is used in the current formula not
-            only within a scope of a quantification on that variable name.
-        """
-        # Task 7.6c
+        if is_equality(self.root) or is_relation(self.root):
+            result = set()
+            for arg in self.arguments:
+                result.update(arg.variables())
+            return result
+        if is_unary(self.root):
+            return self.first.free_variables()
+        if is_binary(self.root):
+            return self.first.free_variables().union(self.second.free_variables())
+        if is_quantifier(self.root):
+            fv = self.statement.free_variables()
+            fv.discard(self.variable)
+            return fv
+        raise ValueError("Invalid formula")
 
     def functions(self) -> Set[Tuple[str, int]]:
-        """Finds all function names in the current formula, along with their
-        arities.
-
-        Returns:
-            A set of pairs of function name and arity (number of arguments) for
-            all function names used in the current formula.
-        """
-        # Task 7.6d
+        if is_equality(self.root) or is_relation(self.root):
+            result = set()
+            for arg in self.arguments:
+                result.update(arg.functions())
+            return result
+        if is_unary(self.root):
+            return self.first.functions()
+        if is_binary(self.root):
+            return self.first.functions().union(self.second.functions())
+        if is_quantifier(self.root):
+            return self.statement.functions()
+        raise ValueError("Invalid formula")
 
     def relations(self) -> Set[Tuple[str, int]]:
-        """Finds all relation names in the current formula, along with their
-        arities.
-
-        Returns:
-            A set of pairs of relation name and arity (number of arguments) for
-            all relation names used in the current formula.
-        """
-        # Task 7.6e
+        if is_relation(self.root):
+            result = {(self.root, len(self.arguments))}
+        else:
+            result = set()
+        if is_equality(self.root):
+            pass
+        elif is_unary(self.root):
+            result.update(self.first.relations())
+        elif is_binary(self.root):
+            result.update(self.first.relations())
+            result.update(self.second.relations())
+        elif is_quantifier(self.root):
+            result.update(self.statement.relations())
+        return result
 
     def substitute(self, substitution_map: Mapping[str, Term],
                    forbidden_variables: AbstractSet[str] = frozenset()) -> \
             Formula:
-        """Substitutes in the current formula, each constant name `construct` or
-        free occurrence of variable name `construct` that is a key in
-        `substitution_map` with the term
-        `substitution_map`\\ ``[``\\ `construct`\\ ``]``.
-
-        Parameters:
-            substitution_map: mapping defining the substitutions to be
-                performed.
-            forbidden_variables: variable names not allowed in substitution
-                terms.
-
-        Returns:
-            The formula resulting from performing all substitutions. Only
-            constant name and variable name occurrences originating in the
-            current formula are substituted (i.e., those originating in one of
-            the specified substitutions are not subjected to additional
-            substitutions).
-
-        Raises:
-            ForbiddenVariableError: If a term that is used in the requested
-                substitution contains a variable name from `forbidden_variables`
-                or a variable name occurrence that becomes bound when that term
-                is substituted into the current formula.
-
-        Examples:
-            >>> Formula.parse('Ay[x=c]').substitute(
-            ...     {'c': Term.parse('plus(d,x)'), 'x': Term.parse('c')}, {'z'})
-            Ay[c=plus(d,x)]
-
-            >>> Formula.parse('Ay[x=c]').substitute(
-            ...     {'c': Term.parse('plus(d,z)')}, {'z'})
-            Traceback (most recent call last):
-              ...
-            predicates.syntax.ForbiddenVariableError: z
-
-            >>> Formula.parse('Ay[x=c]').substitute(
-            ...     {'c': Term.parse('plus(d,y)')})
-            Traceback (most recent call last):
-              ...
-            predicates.syntax.ForbiddenVariableError: y
-        """
         for construct in substitution_map:
             assert is_constant(construct) or is_variable(construct)
         for variable in forbidden_variables:
@@ -535,64 +592,10 @@ class Formula:
 
     def propositional_skeleton(self) -> Tuple[PropositionalFormula,
                                               Mapping[str, Formula]]:
-        """Computes a propositional skeleton of the current formula.
-
-        Returns:
-            A pair. The first element of the pair is a propositional formula
-            obtained from the current formula by substituting every (outermost)
-            subformula that has a relation name, equality, or quantifier at its
-            root with a propositional variable name, consistently such that
-            multiple identical such (outermost) subformulas are substituted with
-            the same propositional variable name. The propositional variable
-            names used for substitution are obtained, from left to right
-            (considering their first occurrence), by calling
-            `next`\\ ``(``\\ `~logic_utils.fresh_variable_name_generator`\\ ``)``.
-            The second element of the pair is a mapping from each propositional
-            variable name to the subformula for which it was substituted.
-
-        Examples:
-            >>> formula = Formula.parse('((Ax[x=7]&x=7)|(~Q(y)->x=7))')
-            >>> formula.propositional_skeleton()
-            (((z1&z2)|(~z3->z2)), {'z1': Ax[x=7], 'z2': x=7, 'z3': Q(y)})
-            >>> formula.propositional_skeleton()
-            (((z4&z5)|(~z6->z5)), {'z4': Ax[x=7], 'z5': x=7, 'z6': Q(y)})
-        """
         # Task 9.8
 
     @staticmethod
     def from_propositional_skeleton(skeleton: PropositionalFormula,
                                     substitution_map: Mapping[str, Formula]) \
             -> Formula:
-        """Computes a predicate-logic formula from a propositional skeleton and
-        a substitution map.
-
-        Arguments:
-            skeleton: propositional skeleton for the formula to compute,
-                containing no constants or operators beyond ``'~'``, ``'->'``,
-                ``'|'``, and ``'&'``.
-            substitution_map: mapping from each propositional variable name of
-                the given propositional skeleton to a predicate-logic formula.
-
-        Returns:
-            A predicate-logic formula obtained from the given propositional
-            skeleton by substituting each propositional variable name with the
-            formula mapped to it by the given map.
-
-        Examples:
-            >>> Formula.from_propositional_skeleton(
-            ...     PropositionalFormula.parse('((z1&z2)|(~z3->z2))'),
-            ...     {'z1': Formula.parse('Ax[x=7]'), 'z2': Formula.parse('x=7'),
-            ...      'z3': Formula.parse('Q(y)')})
-            ((Ax[x=7]&x=7)|(~Q(y)->x=7))
-
-            >>> Formula.from_propositional_skeleton(
-            ...     PropositionalFormula.parse('((z9&z2)|(~z3->z2))'),
-            ...     {'z2': Formula.parse('x=7'), 'z3': Formula.parse('Q(y)'),
-            ...      'z9': Formula.parse('Ax[x=7]')})
-            ((Ax[x=7]&x=7)|(~Q(y)->x=7))
-        """
-        for operator in skeleton.operators():
-            assert is_unary(operator) or is_binary(operator)
-        for variable in skeleton.variables():
-            assert variable in substitution_map
         # Task 9.10
