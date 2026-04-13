@@ -252,3 +252,4 @@ class Model(Generic[T]):
                     if not self.evaluate_formula(formula, assignment):
                         return False
         return True
+        #7/9
