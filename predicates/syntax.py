@@ -37,66 +37,30 @@ class ForbiddenVariableError(Exception):
         assert is_variable(variable_name)
         self.variable_name = variable_name
 
-@lru_cache(maxsize=100) # Cache the return value of is_constant
+@lru_cache(maxsize=100)
 def is_constant(string: str) -> bool:
-    """Checks if the given string is a constant name.
-
-    Parameters:
-        string: string to check.
-
-    Returns:
-        ``True`` if the given string is a constant name, ``False`` otherwise.
-    """
-    return  (((string[0] >= '0' and string[0] <= '9') or \
+    """Checks if the given string is a constant name."""
+    return (((string[0] >= '0' and string[0] <= '9') or \
               (string[0] >= 'a' and string[0] <= 'e')) and \
              string.isalnum()) or string == '_'
 
-@lru_cache(maxsize=100) # Cache the return value of is_variable
+@lru_cache(maxsize=100)
 def is_variable(string: str) -> bool:
-    """Checks if the given string is a variable name.
-
-    Parameters:
-        string: string to check.
-
-    Returns:
-        ``True`` if the given string is a variable name, ``False`` otherwise.
-    """
+    """Checks if the given string is a variable name."""
     return string[0] >= 'u' and string[0] <= 'z' and string.isalnum()
 
-@lru_cache(maxsize=100) # Cache the return value of is_function
+@lru_cache(maxsize=100)
 def is_function(string: str) -> bool:
-    """Checks if the given string is a function name.
-
-    Parameters:
-        string: string to check.
-
-    Returns:
-        ``True`` if the given string is a function name, ``False`` otherwise.
-    """
+    """Checks if the given string is a function name."""
     return string[0] >= 'f' and string[0] <= 't' and string.isalnum()
 
 @frozen
 class Term:
-    """An immutable predicate-logic term in tree representation, composed from
-    variable names and constant names, and function names applied to them.
-
-    Attributes:
-        root (`str`): the constant name, variable name, or function name at the
-            root of the term tree.
-        arguments (`~typing.Optional`\\[`~typing.Tuple`\\[`Term`, ...]]): the
-            arguments of the root, if the root is a function name.
-    """
+    """An immutable predicate-logic term in tree representation."""
     root: str
     arguments: Optional[Tuple[Term, ...]]
 
     def __init__(self, root: str, arguments: Optional[Sequence[Term]] = None):
-        """Initializes a `Term` from its root and root arguments.
-
-        Parameters:
-            root: the root for the formula tree.
-            arguments: the arguments for the root, if the root is a function
-                name.
-        """
         if is_constant(root) or is_variable(root):
             assert arguments is None
             self.root = root
@@ -114,27 +78,9 @@ class Term:
             return self.root + '(' + ','.join(repr(arg) for arg in self.arguments) + ')'
 
     def __eq__(self, other: object) -> bool:
-        """Compares the current term with the given one.
-
-        Parameters:
-            other: object to compare to.
-
-        Returns:
-            ``True`` if the given object is a `Term` object that equals the
-            current term, ``False`` otherwise.
-        """
         return isinstance(other, Term) and str(self) == str(other)
         
     def __ne__(self, other: object) -> bool:
-        """Compares the current term with the given one.
-
-        Parameters:
-            other: object to compare to.
-
-        Returns:
-            ``True`` if the given object is not a `Term` object or does not
-            equal the current term, ``False`` otherwise.
-        """
         return not self == other
 
     def __hash__(self) -> int:
@@ -204,90 +150,36 @@ class Term:
             assert is_constant(construct) or is_variable(construct)
         for variable in forbidden_variables:
             assert is_variable(variable)
-        # Task 9.1
+        raise NotImplementedError  # Task 9.1
 
-@lru_cache(maxsize=100) # Cache the return value of is_equality
+@lru_cache(maxsize=100)
 def is_equality(string: str) -> bool:
-    """Checks if the given string is the equality relation.
-
-    Parameters:
-        string: string to check.
-
-    Returns:
-        ``True`` if the given string is the equality relation, ``False``
-        otherwise.
-    """
+    """Checks if the given string is the equality relation."""
     return string == '='
 
-@lru_cache(maxsize=100) # Cache the return value of is_relation
+@lru_cache(maxsize=100)
 def is_relation(string: str) -> bool:
-    """Checks if the given string is a relation name.
-
-    Parameters:
-        string: string to check.
-
-    Returns:
-        ``True`` if the given string is a relation name, ``False`` otherwise.
-    """
+    """Checks if the given string is a relation name."""
     return string[0] >= 'F' and string[0] <= 'T' and string.isalnum()
 
-@lru_cache(maxsize=100) # Cache the return value of is_unary
+@lru_cache(maxsize=100)
 def is_unary(string: str) -> bool:
-    """Checks if the given string is a unary operator.
-
-    Parameters:
-        string: string to check.
-
-    Returns:
-        ``True`` if the given string is a unary operator, ``False`` otherwise.
-    """
+    """Checks if the given string is a unary operator."""
     return string == '~'
 
-@lru_cache(maxsize=100) # Cache the return value of is_binary
+@lru_cache(maxsize=100)
 def is_binary(string: str) -> bool:
-    """Checks if the given string is a binary operator.
-
-    Parameters:
-        string: string to check.
-
-    Returns:
-        ``True`` if the given string is a binary operator, ``False`` otherwise.
-    """
+    """Checks if the given string is a binary operator."""
     return string == '&' or string == '|' or string == '->'
 
-@lru_cache(maxsize=100) # Cache the return value of is_quantifier
+@lru_cache(maxsize=100)
 def is_quantifier(string: str) -> bool:
-    """Checks if the given string is a quantifier.
-
-    Parameters:
-        string: string to check.
-
-    Returns:
-        ``True`` if the given string is a quantifier, ``False`` otherwise.
-    """
+    """Checks if the given string is a quantifier."""
     return string == 'A' or string == 'E'
 
 @frozen
 class Formula:
-    """An immutable predicate-logic formula in tree representation, composed
-    from relation names applied to predicate-logic terms, and operators and
-    quantifications applied to them.
-
-    Attributes:
-        root (`str`): the relation name, equality relation, operator, or
-            quantifier at the root of the formula tree.
-        arguments (`~typing.Optional`\\[`~typing.Tuple`\\[`Term`, ...]]): the
-            arguments of the root, if the root is a relation name or the
-            equality relation.
-        first (`~typing.Optional`\\[`Formula`]): the first operand of the root,
-            if the root is a unary or binary operator.
-        second (`~typing.Optional`\\[`Formula`]): the second operand of the
-            root, if the root is a binary operator.
-        variable (`~typing.Optional`\\[`str`]): the variable name quantified by
-            the root, if the root is a quantification.
-        statement (`~typing.Optional`\\[`Formula`]): the statement quantified by
-            the root, if the root is a quantification.
-    """
+    """An immutable predicate-logic formula in tree representation."""
     root: str
     arguments: Optional[Tuple[Term, ...]]
     first: Optional[Formula]
@@ -299,22 +191,7 @@ class Formula:
                  arguments_or_first_or_variable: Union[Sequence[Term],
                                                        Formula, str],
                  second_or_statement: Optional[Formula] = None):
-        """Initializes a `Formula` from its root and root arguments, root
-        operands, or root quantified variable name and statement.
-
-        Parameters:
-            root: the root for the formula tree.
-            arguments_or_first_or_variable: the arguments for the root, if the
-                root is a relation name or the equality relation; the first
-                operand for the root, if the root is a unary or binary operator;
-                the variable name to be quantified by the root, if the root is a
-                quantification.
-            second_or_statement: the second operand for the root, if the root is
-                a binary operator; the statement to be quantified by the root,
-                if the root is a quantification.
-        """
         if is_equality(root) or is_relation(root):
-            # Populate self.root and self.arguments
             assert isinstance(arguments_or_first_or_variable, Sequence) and \
                    not isinstance(arguments_or_first_or_variable, str)
             if is_equality(root):
@@ -323,25 +200,22 @@ class Formula:
             self.root, self.arguments = \
                 root, tuple(arguments_or_first_or_variable)
         elif is_unary(root):
-            # Populate self.first
             assert isinstance(arguments_or_first_or_variable, Formula)
             assert second_or_statement is None
             self.root, self.first = root, arguments_or_first_or_variable
         elif is_binary(root):
-            # Populate self.first and self.second
             assert isinstance(arguments_or_first_or_variable, Formula)
             assert second_or_statement is not None
             self.root, self.first, self.second = \
                 root, arguments_or_first_or_variable, second_or_statement
         else:
             assert is_quantifier(root)
-            # Populate self.variable and self.statement
             assert isinstance(arguments_or_first_or_variable, str) and \
                    is_variable(arguments_or_first_or_variable)
             assert second_or_statement is not None
             self.root, self.variable, self.statement = \
                 root, arguments_or_first_or_variable, second_or_statement
-
+#ee
     @memoized_parameterless_method
     def __repr__(self) -> str:
         def priority(r):
@@ -375,27 +249,9 @@ class Formula:
         raise ValueError("Invalid formula")
 
     def __eq__(self, other: object) -> bool:
-        """Compares the current formula with the given one.
-
-        Parameters:
-            other: object to compare to.
-
-        Returns:
-            ``True`` if the given object is a `Formula` object that equals the
-            current formula, ``False`` otherwise.
-        """
         return isinstance(other, Formula) and str(self) == str(other)
         
     def __ne__(self, other: object) -> bool:
-        """Compares the current formula with the given one.
-
-        Parameters:
-            other: object to compare to.
-
-        Returns:
-            ``True`` if the given object is not a `Formula` object or does not
-            equal the current formula, ``False`` otherwise.
-        """
         return not self == other
 
     def __hash__(self) -> int:
@@ -588,14 +444,14 @@ class Formula:
             assert is_constant(construct) or is_variable(construct)
         for variable in forbidden_variables:
             assert is_variable(variable)
-        # Task 9.2
+        raise NotImplementedError  # Task 9.2
 
     def propositional_skeleton(self) -> Tuple[PropositionalFormula,
                                               Mapping[str, Formula]]:
-        # Task 9.8
+        raise NotImplementedError  # Task 9.8
 
     @staticmethod
     def from_propositional_skeleton(skeleton: PropositionalFormula,
                                     substitution_map: Mapping[str, Formula]) \
             -> Formula:
-        # Task 9.10
+        raise NotImplementedError  # Task 9.10
