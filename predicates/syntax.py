@@ -100,6 +100,7 @@ class Term:
         if is_constant(root) or is_variable(root):
             assert arguments is None
             self.root = root
+            self.arguments = None
         else:
             assert is_function(root)
             assert arguments is not None and len(arguments) > 0
@@ -210,8 +211,9 @@ class Term:
         if is_variable(self.root):
             return set()
         result = set()
-        for arg in self.arguments:
-            result.update(arg.constants())
+        if self.arguments is not None:
+            for arg in self.arguments:
+                result.update(arg.constants())
         return result
 
     def variables(self) -> Set[str]:
@@ -225,8 +227,9 @@ class Term:
         if is_constant(self.root):
             return set()
         result = set()
-        for arg in self.arguments:
-            result.update(arg.variables())
+        if self.arguments is not None:
+            for arg in self.arguments:
+                result.update(arg.variables())
         return result
 
     def functions(self) -> Set[Tuple[str, int]]:
@@ -240,8 +243,9 @@ class Term:
         result = set()
         if is_function(self.root):
             result.add((self.root, len(self.arguments)))
-        for arg in self.arguments:
-            result.update(arg.functions())
+        if self.arguments is not None:
+            for arg in self.arguments:
+                result.update(arg.functions())
         return result
 
     def substitute(self, substitution_map: Mapping[str, Term],
@@ -373,13 +377,11 @@ class Formula:
     second: Optional[Formula]
     variable: Optional[str]
     statement: Optional[Formula]
-    _parenthesized: bool
 
     def __init__(self, root: str,
                  arguments_or_first_or_variable: Union[Sequence[Term],
                                                        Formula, str],
-                 second_or_statement: Optional[Formula] = None,
-                 _parenthesized: bool = False):
+                 second_or_statement: Optional[Formula] = None):
         """Initializes a `Formula` from its root and root arguments, root
         operands, or root quantified variable name and statement.
 
@@ -393,8 +395,6 @@ class Formula:
             second_or_statement: the second operand for the root, if the root is
                 a binary operator; the statement to be quantified by the root,
                 if the root is a quantification.
-            _parenthesized: whether this formula was originally enclosed in
-                parentheses (internal use only).
         """
         if is_equality(root) or is_relation(root):
             assert isinstance(arguments_or_first_or_variable, Sequence) and \
@@ -420,20 +420,6 @@ class Formula:
             assert second_or_statement is not None
             self.root, self.variable, self.statement = \
                 root, arguments_or_first_or_variable, second_or_statement
-        self._parenthesized = _parenthesized
-
-    def _with_parentheses(self):
-        """Returns a copy of this formula with _parenthesized set to True."""
-        if is_equality(self.root) or is_relation(self.root):
-            return Formula(self.root, self.arguments, _parenthesized=True)
-        elif is_unary(self.root):
-            return Formula(self.root, self.first, _parenthesized=True)
-        elif is_binary(self.root):
-            return Formula(self.root, self.first, self.second, _parenthesized=True)
-        elif is_quantifier(self.root):
-            return Formula(self.root, self.variable, self.statement, _parenthesized=True)
-        else:
-            raise ValueError("Invalid formula")
 
     @memoized_parameterless_method
     def __repr__(self) -> str:
@@ -443,16 +429,16 @@ class Formula:
             The standard string representation of the current formula.
         """
         if is_equality(self.root):
-            s = f"{self.arguments[0]}={self.arguments[1]}"
-        elif is_relation(self.root):
-            s = f"{self.root}({','.join(str(arg) for arg in self.arguments)})"
-        elif is_unary(self.root):
+            return f"{self.arguments[0]}={self.arguments[1]}"
+        if is_relation(self.root):
+            return f"{self.root}({','.join(str(arg) for arg in self.arguments)})"
+        if is_unary(self.root):
             sub = self.first
             sub_str = str(sub)
-            if is_binary(sub.root):
+            if is_binary(sub.root) or is_unary(sub.root) or is_quantifier(sub.root):
                 sub_str = f"({sub_str})"
-            s = f"~{sub_str}"
-        elif is_binary(self.root):
+            return f"~{sub_str}"
+        if is_binary(self.root):
             left, right = self.first, self.second
             left_str = str(left)
             if is_binary(left.root) or is_unary(left.root) or is_quantifier(left.root):
@@ -462,17 +448,15 @@ class Formula:
             if is_binary(right.root) or is_unary(right.root) or is_quantifier(right.root):
                 if self._needs_parens(right, self.root):
                     right_str = f"({right_str})"
-            s = f"{left_str}{self.root}{right_str}"
-        elif is_quantifier(self.root):
-            s = f"{self.root}{self.variable}[{self.statement}]"
-        else:
-            raise ValueError("Invalid formula")
-        if self._parenthesized:
-            s = f"({s})"
-        return s
+            result = f"{left_str}{self.root}{right_str}"
+            if self.root == '->':
+                result = f"({result})"
+            return result
+        if is_quantifier(self.root):
+            return f"{self.root}{self.variable}[{self.statement}]"
+        raise ValueError("Invalid formula")
 
     def _needs_parens(self, sub: 'Formula', parent_root: str) -> bool:
-        """Determines if parentheses are needed around a subformula."""
         prec = {'->':1, '|':2, '&':3, '~':4, 'A':4, 'E':4}
         sub_prec = prec.get(sub.root, 0)
         parent_prec = prec.get(parent_root, 0)
@@ -526,7 +510,7 @@ class Formula:
         """
         def parse_identifier(s):
             i = 0
-            while i < len(s) and (s[i].isalnum() or s[i] == '_'):
+            while i < len(s) and s[i].isalnum():
                 i += 1
             return s[:i], s[i:]
 
@@ -548,9 +532,7 @@ class Formula:
                 formula, rest = parse_implication(s[1:])
                 if not rest or rest[0] != ')':
                     raise ValueError("Missing closing parenthesis")
-                rest = rest[1:]
-                formula = formula._with_parentheses()
-                return formula, rest
+                return formula, rest[1:]
             if s and s[0] >= 'F' and s[0] <= 'T':
                 name, rest = parse_identifier(s)
                 if rest and rest[0] == '(':
